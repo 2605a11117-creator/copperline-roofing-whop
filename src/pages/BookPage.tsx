@@ -122,8 +122,8 @@ function Booking({ offer }: { offer: Offer }) {
                       {details.address}, {details.zip}
                     </p>
                     <p>{details.phone}</p>
-                    {details.window && <p>Preferred time: {details.window}</p>}
-                    {details.reference && <p>Estimate number: {details.reference}</p>}
+                    {offer.details === 'appointment' && details.window && <p>Preferred time: {details.window}</p>}
+                    {offer.details === 'job' && details.reference && <p>Estimate number: {details.reference}</p>}
                   </div>
                   <button type="button" className="btn btn--quiet btn--sm" onClick={() => setStep('details')}>
                     Edit details

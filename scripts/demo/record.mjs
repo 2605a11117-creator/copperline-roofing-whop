@@ -288,7 +288,24 @@ async function fillEmail(page) {
     const skip = frame.getByText(/continue without signing in/i).first();
     if (await skip.count().catch(() => 0)) await skip.click().catch(() => {});
   }
+  await fillBillingPlace(page);
   return filled;
+}
+
+/** City and state of the demo customer in the PaymentElement billing address, when they are empty. */
+async function fillBillingPlace(page) {
+  for (const frame of page.frames()) {
+    const city = frame.locator('input[placeholder="City"]').first();
+    if (await city.count().catch(() => 0)) {
+      if (!(await city.inputValue().catch(() => ''))) await city.fill(person.city ?? 'Denver').catch(() => {});
+    }
+    for (const select of await frame.locator('select').all().catch(() => [])) {
+      const labels = await select.locator('option').allTextContents().catch(() => []);
+      if (!labels.includes('Colorado')) continue;
+      const current = await select.evaluate((el) => el.options[el.selectedIndex]?.text ?? '').catch(() => '');
+      if (!current || /^state$/i.test(current)) await select.selectOption({ label: person.state ?? 'Colorado' }).catch(() => {});
+    }
+  }
 }
 
 async function checkout(page, offerPath, { job }) {

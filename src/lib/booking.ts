@@ -1,4 +1,5 @@
 import type { BookingDetails, DepositCharged, PaymentStep, WhopEnvironment } from '../../shared/api';
+import { findOffer, isInServiceArea, site } from '../config/site';
 import type { Offer } from '../config/types';
 import { api, ApiError, delay } from './api';
 import { isUsPhone, isZip, toE164 } from './format';
@@ -36,8 +37,10 @@ export function detailsMetadata(offerId: string, details: BookingDetails): Recor
     zip: details.zip.trim(),
     source: 'website',
   };
-  if (details.window) metadata.preferred_window = details.window;
-  if (details.reference.trim()) metadata.estimate_ref = details.reference.trim();
+  // Details are shared between booking pages, so keep only the fields this offer asks for.
+  const kind = findOffer(offerId)?.details;
+  if (kind === 'appointment' && details.window) metadata.preferred_window = details.window;
+  if (kind === 'job' && details.reference.trim()) metadata.estimate_ref = details.reference.trim();
   if (details.notes.trim()) metadata.notes = details.notes.trim().slice(0, 450);
   return metadata;
 }
@@ -45,11 +48,14 @@ export function detailsMetadata(offerId: string, details: BookingDetails): Recor
 /** Billing defaults for PaymentElement so the buyer does not type them twice. */
 export function billingDefaults(details: BookingDetails): Record<string, unknown> {
   const phone = toE164(details.phone);
+  const zip = details.zip.trim().slice(0, 5);
+  // The service area sits in the company's state, so an in-area ZIP fills the billing state too.
+  const state = isInServiceArea(zip) ? site.company.state : undefined;
   return {
     billingDetails: {
       name: details.name.trim(),
       ...(phone ? { phone } : {}),
-      address: { line1: details.address.trim(), postal_code: details.zip.trim().slice(0, 5), country: 'US' },
+      address: { line1: details.address.trim(), postal_code: zip, ...(state ? { state } : {}), country: 'US' },
     },
   };
 }

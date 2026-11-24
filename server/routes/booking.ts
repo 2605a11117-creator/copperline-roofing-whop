@@ -35,8 +35,9 @@ export function bookingMetadata(offer: Offer, details: BookingDetails, extra: Re
     source: 'website',
     ...extra,
   };
-  if (details.window) metadata.preferred_window = details.window;
-  if (details.reference) metadata.estimate_ref = details.reference;
+  // The browser shares details between booking pages: keep only the fields this offer asks for.
+  if (offer.details === 'appointment' && details.window) metadata.preferred_window = details.window;
+  if (offer.details === 'job' && details.reference) metadata.estimate_ref = details.reference;
   if (details.notes) metadata.notes = details.notes;
   return metadata;
 }
