@@ -632,12 +632,15 @@ function speedUpTurns(input, output, spans, speed) {
   const cuts = spans
     .filter((span) => span.to - span.from > 3)
     .sort((a, b) => a.from - b.from);
-  // One time map for the whole video: inside a span, time runs `speed` times faster; outside, at 1x.
-  // new_t = t - sum(clip(t - from, 0, length)) * (1 - 1/speed); fps then drops the surplus frames.
-  const saved = (1 - 1 / speed).toFixed(4);
-  const shift = cuts.map((span) => `clip(T-${span.from.toFixed(2)},0,${(span.to - span.from).toFixed(2)})`).join('+') || '0';
-  const filter = `setpts='(T-(${shift})*${saved})/TB',fps=${config.framerate ?? 24}`;
-  console.log(`Speeding up ${cuts.length} typing spans ${speed}x: ${cuts.map((c) => `${c.from.toFixed(0)}-${c.to.toFixed(0)}s`).join(', ')}`);
+  // One time map for the whole video: inside a span, time runs `speed` (or the span's own speed) times
+  // faster; outside, at 1x. new_t = t - sum(clip(t - from, 0, length) * (1 - 1/speed)); fps then drops
+  // the surplus frames.
+  const shift =
+    cuts
+      .map((span) => `clip(T-${span.from.toFixed(2)},0,${(span.to - span.from).toFixed(2)})*${(1 - 1 / (span.speed ?? speed)).toFixed(4)}`)
+      .join('+') || '0';
+  const filter = `setpts='(T-(${shift}))/TB',fps=${config.framerate ?? 24}`;
+  console.log(`Speeding up ${cuts.length} spans: ${cuts.map((c) => `${c.from.toFixed(0)}-${c.to.toFixed(0)}s@${c.speed ?? speed}x`).join(', ')}`);
   return new Promise((resolve) => {
     const ffmpeg = spawn(
       ffmpegPath,
@@ -718,9 +721,10 @@ if (mode === 'setup') await setup();
 else if (mode === 'record') await record();
 else if (mode === 'rehearse') await rehearse();
 else if (mode === 'speed') {
-  // node record.mjs speed <raw.mp4> <out.mp4> <from-to,from-to,...>   (seconds) re-runs the speed-up on a take.
+  // node record.mjs speed <raw.mp4> <out.mp4> <from-to[@speed],...>   (seconds) re-runs the speed-up on a take.
   const [input, output, list = ''] = process.argv.slice(3);
-  const spans = list.split(',').filter(Boolean).map((pair) => { const [from, to] = pair.split('-').map(Number); return { from, to }; });
+  // Each span is from-to, optionally @speed (for example 112-192@5).
+  const spans = list.split(',').filter(Boolean).map((item) => { const [range, at] = item.split('@'); const [from, to] = range.split('-').map(Number); return at ? { from, to, speed: Number(at) } : { from, to }; });
   process.exitCode = await speedUpTurns(input, output, spans, Number(config.turnSpeed ?? 3));
 }
 else console.log('Usage: node record.mjs setup | rehearse | record | speed <raw> <out> <from-to,...>');
