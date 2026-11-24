@@ -11,3 +11,14 @@ dist-ssr
 .vinxi
 __unconfig*
 todos.json
+
+# Local only
+.dev.vars
+.env.*
+*.log
+logs/
+scripts/demo/.demo-profile/
+scripts/demo/output/
+scripts/demo/node_modules/
+scripts/demo/demo.config.json
+CLAUDE.md

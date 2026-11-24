@@ -1,4 +1,5 @@
 import { createRouter as createTanStackRouter } from '@tanstack/react-router'
+import { setClientRouter } from './lib/router-ref'
 import { routeTree } from './routeTree.gen'
 
 export function getRouter() {
@@ -9,6 +10,8 @@ export function getRouter() {
     defaultPreloadStaleTime: 0,
   })
 
+  // In the browser, navigate() in src/lib/router.tsx goes through this instance.
+  setClientRouter(router)
   return router
 }
 

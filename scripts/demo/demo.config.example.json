@@ -1,0 +1,43 @@
+{
+  "siteUrl": "https://your-site.whop.site",
+  "outDir": "output",
+  "outputName": "roofing-template-demo.mp4",
+  "framerate": 24,
+  "crf": 26,
+  "finalBalance": 7950,
+  "testCustomer": {
+    "name": "Jordan Rivera",
+    "phone": "(303) 555-0172",
+    "email": "jordan.rivera@example.com",
+    "address": "1450 Larimer St",
+    "zip": "80202"
+  },
+  "dashboardViews": [
+    {
+      "title": "Whop dashboard: Leads",
+      "body": "The estimate request landed as a lead on the account.",
+      "url": "https://sandbox.whop.com/dashboard/biz_xxxxxxxx/leads/",
+      "seconds": 7
+    },
+    {
+      "title": "Whop dashboard: Payments",
+      "body": "The $149 inspection and the $500 deposit from this video.",
+      "url": "https://sandbox.whop.com/dashboard/biz_xxxxxxxx/payments/",
+      "seconds": 7
+    },
+    {
+      "title": "Whop dashboard: Invoices",
+      "body": "The final-balance invoice, charged to the card on file.",
+      "url": "https://sandbox.whop.com/dashboard/biz_xxxxxxxx/invoices/",
+      "seconds": 7
+    },
+    {
+      "title": "Source code",
+      "body": "Original code. Company, services, prices and Whop IDs live in two config files.",
+      "url": "https://github.com/your-name/your-repo",
+      "seconds": 8,
+      "scroll": 700
+    }
+  ],
+  "closingLine": "Live URL, source code and the list of Whop features are attached to this submission."
+}

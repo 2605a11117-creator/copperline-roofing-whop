@@ -1,0 +1,14 @@
+{
+  "name": "roofing-template-demo-recorder",
+  "private": true,
+  "type": "module",
+  "description": "Plays the scripted demo of the live site in Microsoft Edge and records the screen.",
+  "scripts": {
+    "setup": "node record.mjs setup",
+    "record": "node record.mjs record"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0",
+    "playwright-core": "^1.56.0"
+  }
+}

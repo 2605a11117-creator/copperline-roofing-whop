@@ -10,33 +10,103 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminRouteImport } from './routes/admin'
+import { Route as DotwellKnownAppleDeveloperMerchantidDomainAssociationRouteImport } from './routes/[.]well-known.apple-developer-merchantid-domain-association'
+import { Route as ApiSplatRouteImport } from './routes/api/$'
+import { Route as BookOfferIdRouteImport } from './routes/book.$offerId'
+import { Route as BookOfferIdReturnRouteImport } from './routes/book.$offerId_.return'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DotwellKnownAppleDeveloperMerchantidDomainAssociationRoute =
+  DotwellKnownAppleDeveloperMerchantidDomainAssociationRouteImport.update({
+    id: '/.well-known/apple-developer-merchantid-domain-association',
+    path: '/.well-known/apple-developer-merchantid-domain-association',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiSplatRoute = ApiSplatRouteImport.update({
+  id: '/api/$',
+  path: '/api/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BookOfferIdRoute = BookOfferIdRouteImport.update({
+  id: '/book/$offerId',
+  path: '/book/$offerId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BookOfferIdReturnRoute = BookOfferIdReturnRouteImport.update({
+  id: '/book/$offerId_/return',
+  path: '/book/$offerId/return',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/.well-known/apple-developer-merchantid-domain-association': typeof DotwellKnownAppleDeveloperMerchantidDomainAssociationRoute
+  '/api/$': typeof ApiSplatRoute
+  '/book/$offerId': typeof BookOfferIdRoute
+  '/book/$offerId/return': typeof BookOfferIdReturnRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/.well-known/apple-developer-merchantid-domain-association': typeof DotwellKnownAppleDeveloperMerchantidDomainAssociationRoute
+  '/api/$': typeof ApiSplatRoute
+  '/book/$offerId': typeof BookOfferIdRoute
+  '/book/$offerId/return': typeof BookOfferIdReturnRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/.well-known/apple-developer-merchantid-domain-association': typeof DotwellKnownAppleDeveloperMerchantidDomainAssociationRoute
+  '/api/$': typeof ApiSplatRoute
+  '/book/$offerId': typeof BookOfferIdRoute
+  '/book/$offerId_/return': typeof BookOfferIdReturnRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/.well-known/apple-developer-merchantid-domain-association'
+    | '/api/$'
+    | '/book/$offerId'
+    | '/book/$offerId/return'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/admin'
+    | '/.well-known/apple-developer-merchantid-domain-association'
+    | '/api/$'
+    | '/book/$offerId'
+    | '/book/$offerId/return'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin'
+    | '/.well-known/apple-developer-merchantid-domain-association'
+    | '/api/$'
+    | '/book/$offerId'
+    | '/book/$offerId_/return'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRoute
+  DotwellKnownAppleDeveloperMerchantidDomainAssociationRoute: typeof DotwellKnownAppleDeveloperMerchantidDomainAssociationRoute
+  ApiSplatRoute: typeof ApiSplatRoute
+  BookOfferIdRoute: typeof BookOfferIdRoute
+  BookOfferIdReturnRoute: typeof BookOfferIdReturnRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +118,52 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/apple-developer-merchantid-domain-association': {
+      id: '/.well-known/apple-developer-merchantid-domain-association'
+      path: '/.well-known/apple-developer-merchantid-domain-association'
+      fullPath: '/.well-known/apple-developer-merchantid-domain-association'
+      preLoaderRoute: typeof DotwellKnownAppleDeveloperMerchantidDomainAssociationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/$': {
+      id: '/api/$'
+      path: '/api/$'
+      fullPath: '/api/$'
+      preLoaderRoute: typeof ApiSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/book/$offerId': {
+      id: '/book/$offerId'
+      path: '/book/$offerId'
+      fullPath: '/book/$offerId'
+      preLoaderRoute: typeof BookOfferIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/book/$offerId_/return': {
+      id: '/book/$offerId_/return'
+      path: '/book/$offerId/return'
+      fullPath: '/book/$offerId/return'
+      preLoaderRoute: typeof BookOfferIdReturnRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRoute,
+  DotwellKnownAppleDeveloperMerchantidDomainAssociationRoute:
+    DotwellKnownAppleDeveloperMerchantidDomainAssociationRoute,
+  ApiSplatRoute: ApiSplatRoute,
+  BookOfferIdRoute: BookOfferIdRoute,
+  BookOfferIdReturnRoute: BookOfferIdReturnRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
