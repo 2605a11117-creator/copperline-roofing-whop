@@ -3,6 +3,7 @@
 //   node record.mjs setup    Opens Microsoft Edge with a separate demo profile. Sign in to Whop, the
 //                            Whop sandbox and GitHub there, then close the window. Your normal browser
 //                            profile is not touched.
+//   node record.mjs rehearse Plays the script in that profile without recording or paying, to check it.
 //   node record.mjs record   Opens the same profile, records the whole screen with ffmpeg and plays the
 //                            demo: the live site, the estimate form, a sandbox checkout, the deposit,
 //                            the final invoice, then the Whop dashboard and the source code.
@@ -18,6 +19,16 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import ffmpegPath from 'ffmpeg-static';
 import { chromium } from 'playwright-core';
+import {
+  clickWithPointer,
+  pointAt,
+  pointAtTab,
+  pointAtViewport,
+  ripple,
+  startPointer,
+  stopPointer,
+  syncPointer,
+} from './pointer.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const config = JSON.parse(readFileSync(path.join(here, 'demo.config.json'), 'utf8'));
@@ -125,6 +136,9 @@ async function caption(page, title, body = '') {
 }
 
 async function smoothScrollTo(page, selector, block = 'start') {
+  // Rest the pointer over the content, as when scrolling with the wheel.
+  const size = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight })).catch(() => null);
+  if (size) await pointAtViewport(page, size.w * 0.58, size.h * 0.6, 500);
   await page.evaluate(
     ([sel, where]) => document.querySelector(sel)?.scrollIntoView({ behavior: 'smooth', block: where }),
     [selector, block],
@@ -132,21 +146,106 @@ async function smoothScrollTo(page, selector, block = 'start') {
   await sleep(1400);
 }
 
+/** Scrolls an element to the middle of the window, clear of the sticky header and the mobile bar. */
+async function centre(locator) {
+  await locator.evaluate((el) => el.scrollIntoView({ block: 'center', behavior: 'instant' })).catch(() => {});
+  await sleep(250);
+}
+
 async function typeInto(page, selector, text) {
   const field = page.locator(selector).first();
-  await field.click();
+  await centre(field);
+  await clickWithPointer(page, field);
   await field.fill('');
   await field.pressSequentially(text, { delay: 35 });
+}
+
+async function clickCentred(locator) {
+  await centre(locator);
+  await clickWithPointer(locator.page(), locator);
+}
+
+async function checkCentred(locator) {
+  await centre(locator);
+  const point = await pointAt(locator.page(), locator);
+  if (point) await ripple(locator.page(), point.vx, point.vy);
+  await locator.check();
+}
+
+async function selectCentred(page, selector, option) {
+  const select = page.locator(selector).first();
+  await centre(select);
+  await pointAt(page, select);
+  await select.selectOption(option).catch(() => {});
+  await sleep(300);
+}
+
+/** Opens or folds the ?debug=1 pixel panel; open, it covers the right edge of the window. */
+async function setInspector(page, open) {
+  const toggle = page.locator('.inspector__toggle').first();
+  if (!(await toggle.count().catch(() => 0))) return;
+  const expanded = (await toggle.getAttribute('aria-expanded').catch(() => null)) === 'true';
+  if (expanded !== open) {
+    await clickWithPointer(page, toggle).catch(() => {});
+    await sleep(400);
+  }
 }
 
 async function waitForPerson(page, predicate, title, body) {
   await caption(page, title, body);
   const started = Date.now();
   while (Date.now() - started < WAIT_FOR_PERSON_MS) {
-    if (await predicate().catch(() => false)) return;
+    if (await predicate().catch(() => false)) {
+      // The person moved the mouse: continue the pointer's glides from where they left it.
+      await syncPointer();
+      return;
+    }
     await sleep(500);
   }
   throw new Error(`Timed out waiting: ${title}`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tabs: 1 the live Whop website, 2 the Whop dashboard, 3 the GitHub repository.
+
+async function maximize(page) {
+  try {
+    const session = await page.context().newCDPSession(page);
+    const { windowId } = await session.send('Browser.getWindowForTarget');
+    await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'maximized' } });
+    await session.detach();
+  } catch {
+    // Keep the window as it is.
+  }
+}
+
+async function prepareTabs(browser) {
+  const context = browser.contexts()[0];
+  const pages = context.pages();
+  const siteTab = pages[0] ?? (await context.newPage());
+  for (const extra of pages.slice(1)) await extra.close().catch(() => {});
+  await siteTab.bringToFront();
+  await maximize(siteTab);
+  await siteTab.goto(`${site}/?debug=1`, { waitUntil: 'domcontentloaded' });
+  const views = config.dashboardViews ?? [];
+  const dashboardTab = await context.newPage();
+  const firstDashboard = views.find((view) => !/github\.com/.test(view.url));
+  if (firstDashboard) await dashboardTab.goto(firstDashboard.url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  const codeTab = await context.newPage();
+  const code = views.find((view) => /github\.com/.test(view.url));
+  if (code) await codeTab.goto(code.url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await siteTab.bringToFront();
+  await sleep(1000);
+  return { order: [siteTab, dashboardTab, codeTab], site: siteTab, dashboard: dashboardTab, code: codeTab, active: siteTab };
+}
+
+/** Moves the pointer to a tab, then shows that tab. */
+async function switchTab(tabs, tab) {
+  if (tabs.active === tab) return;
+  await pointAtTab(tabs.active, tabs.order.indexOf(tab), tabs.order.length);
+  await tab.bringToFront();
+  tabs.active = tab;
+  await sleep(700);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -218,7 +317,7 @@ async function showSite(page) {
   await caption(page, 'Service area', 'ZIP code check against the configured service area.');
   await sleep(1200);
   await typeInto(page, '.zip-check__input', person.zip);
-  await page.locator('.zip-check button[type="submit"]').first().click();
+  await clickCentred(page.locator('.zip-check button[type="submit"]').first());
   await sleep(3000);
 
   await smoothScrollTo(page, '#reviews');
@@ -232,20 +331,23 @@ async function showSite(page) {
 
 async function requestEstimate(page) {
   await smoothScrollTo(page, '#estimate');
+  await setInspector(page, false);
   await caption(page, 'Request an estimate', 'This form creates a lead on the Whop account through the Whop API: POST /members, then POST /events with event_name "lead".');
   await typeInto(page, '#estimate [name="name"]', person.name);
   await typeInto(page, '#estimate [name="phone"]', person.phone);
   await typeInto(page, '#estimate [name="email"]', person.email);
   await typeInto(page, '#estimate [name="address"]', person.address);
   await typeInto(page, '#estimate [name="zip"]', person.zip);
-  await page.selectOption('#estimate [name="service"]', { index: 1 }).catch(() => {});
-  await page.selectOption('#estimate [name="timeline"]', { index: 1 }).catch(() => {});
+  await selectCentred(page, '#estimate [name="service"]', { index: 1 });
+  await selectCentred(page, '#estimate [name="timeline"]', { index: 1 });
   await typeInto(page, '#estimate [name="message"]', 'Shingles lifted after the last hail storm, small leak over the garage.');
   const consent = page.locator('#estimate #consent');
-  if (await consent.count()) await consent.check();
+  if (await consent.count()) await checkCentred(consent);
   await sleep(800);
-  await page.locator('#estimate button[type="submit"]').first().click();
+  await clickCentred(page.locator('#estimate button[type="submit"]').first());
   await page.waitForSelector('#estimate [role="status"], #estimate .form-panel--done, #estimate .estimate-done', { timeout: 30000 }).catch(() => {});
+  await centre(page.locator('#estimate .form-panel--done, #estimate').first());
+  await setInspector(page, true);
   await sleep(1500);
   await caption(page, 'Estimate request sent: lead created on the Whop account', 'The response carries the lead ID from Whop. The panel shows whop.track("estimate_requested") and the standard lead event, deduplicated with the server copies by event_id.');
   await sleep(5000);
@@ -258,12 +360,12 @@ async function fillBooking(page, { job }) {
   await typeInto(page, '#book-zip', person.zip);
   if (job) {
     const consent = page.locator('#book-deposit-consent');
-    if (await consent.count()) await consent.check();
+    if (await consent.count()) await checkCentred(consent);
   } else {
-    await page.selectOption('#book-window', { index: 1 }).catch(() => {});
+    await selectCentred(page, '#book-window', { index: 1 });
   }
   await sleep(600);
-  await page.getByRole('button', { name: /continue to payment/i }).click();
+  await clickCentred(page.getByRole('button', { name: /continue to payment/i }));
   await sleep(2500);
 }
 
@@ -276,7 +378,7 @@ async function fillEmail(page) {
   for (const frame of page.frames()) {
     const input = frame.locator('input[type="email"], input[name="email"], input[autocomplete="email"]').first();
     if (await input.count().catch(() => 0)) {
-      await input.click().catch(() => {});
+      await clickWithPointer(page, input).catch(() => {});
       await input.fill(email).catch(() => {});
       await page.keyboard.press('Tab').catch(() => {});
       filled = true;
@@ -345,6 +447,8 @@ async function checkout(page, offerPath, { job }) {
 
 async function office(page) {
   await page.goto(`${site}/admin`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('input[type="password"], .admin__title', { timeout: 20000 }).catch(() => {});
+  await setInspector(page, false);
   await waitForPerson(
     page,
     async () => (await page.locator('.admin__title').count()) > 0,
@@ -362,44 +466,54 @@ async function office(page) {
 
   const bill = page.getByRole('button', { name: /bill final balance/i }).first();
   if (await bill.count()) {
-    await bill.click();
+    await clickCentred(bill);
     await sleep(1500);
   }
   const amount = page.locator('input[id$="-amount"]').first();
   if (await amount.count()) {
-    await amount.scrollIntoViewIfNeeded();
-    await amount.click();
+    await clickCentred(amount);
     await amount.fill('');
     await amount.pressSequentially(String(config.finalBalance ?? 7950), { delay: 60 });
   }
   const charge = page.locator('.choice input[type="radio"]').first();
-  if (await charge.count()) await charge.check();
+  if (await charge.count()) await checkCentred(charge);
   await sleep(1000);
   await caption(page, 'Final balance with the Whop Invoices API', 'Creates an invoice for the remaining balance and charges the stored card automatically.');
-  await page.getByRole('button', { name: /create invoice/i }).first().click();
+  await clickCentred(page.getByRole('button', { name: /create invoice/i }).first());
   await sleep(9000);
   await smoothScrollTo(page, '#invoices-title');
   await caption(page, 'Invoice created and charged', 'The invoice is read back from the Invoices API with its status.');
   await sleep(5500);
 }
 
-async function dashboards(page) {
+/** The Whop dashboard pages in tab 2, then the source code in tab 3. */
+async function dashboards(tabs) {
   for (const view of config.dashboardViews ?? []) {
-    await page.goto(view.url, { waitUntil: 'domcontentloaded' });
+    const page = /github\.com/.test(view.url) ? tabs.code : tabs.dashboard;
+    await switchTab(tabs, page);
+    if (page.url().replace(/[?#].*$/, '') !== view.url.replace(/[?#].*$/, '')) {
+      await page.goto(view.url, { waitUntil: 'domcontentloaded' });
+    }
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await sleep(1500);
+    await sleep(1200);
     if (view.search) {
       // Narrow a list to the demo customer, so no other account details appear in the video.
       const box = page.getByPlaceholder(/search by name/i).first();
       if (await box.count().catch(() => 0)) {
-        await box.click().catch(() => {});
+        await clickWithPointer(page, box).catch(() => {});
+        await box.fill('').catch(() => {});
         await box.pressSequentially(view.search, { delay: 60 }).catch(() => {});
         await sleep(2500);
       }
     }
+    // Point at the first row of the list or the page heading while the caption is read.
+    const focus = page.locator('table tbody tr, [role="row"], main h1, article h1').first();
+    if (await focus.count().catch(() => 0)) await pointAt(page, focus, 700);
     await caption(page, view.title, view.body ?? '');
     await sleep(view.seconds ? view.seconds * 1000 : 6000);
     if (view.scroll) {
+      const size = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+      await pointAtViewport(page, size.w * 0.5, size.h * 0.6, 500);
       await page.mouse.wheel(0, view.scroll);
       await sleep(3000);
     }
@@ -408,13 +522,10 @@ async function dashboards(page) {
 
 async function record() {
   const browser = await openBrowser([]);
-  const context = browser.contexts()[0];
-  const pages = context.pages();
-  const page = pages[0] ?? (await context.newPage());
-  for (const extra of pages.slice(1)) await extra.close().catch(() => {});
-  await page.bringToFront();
-  await page.goto(`${site}/?debug=1`, { waitUntil: 'domcontentloaded' });
-  await sleep(2500);
+  const tabs = await prepareTabs(browser);
+  const page = tabs.site;
+  await startPointer();
+  await sleep(1500);
 
   const file = path.join(outDir, config.outputName ?? 'roofing-template-demo.mp4');
   const recording = startRecording(file);
@@ -425,12 +536,69 @@ async function record() {
     await checkout(page, '/book/inspection', { job: false });
     await checkout(page, '/book/deposit', { job: true });
     await office(page);
-    await dashboards(page);
-    await caption(page, 'Thanks for watching', config.closingLine ?? '');
+    await dashboards(tabs);
+    await caption(tabs.active, 'Thanks for watching', config.closingLine ?? '');
     await sleep(4000);
   } finally {
     const code = await recording.stop();
     console.log(code === 0 ? `Saved ${file}` : `ffmpeg exited with code ${code}`);
+    stopPointer();
+    await browser.close().catch(() => {});
+  }
+}
+
+/** One still frame of the whole screen (used by the rehearsal to check the tabs). */
+function screenshot(file) {
+  mkdirSync(path.dirname(file), { recursive: true });
+  return new Promise((resolve) => {
+    const ffmpeg = spawn(ffmpegPath, ['-y', '-loglevel', 'error', '-f', 'gdigrab', '-draw_mouse', '1', '-i', 'desktop', '-frames:v', '1', file], { stdio: 'ignore' });
+    ffmpeg.on('exit', resolve);
+  });
+}
+
+/**
+ * Plays the same script in the demo window without recording or paying: the site tour, the estimate,
+ * both checkouts up to the card fields, the office passcode screen and the dashboard pages.
+ * Run it before `record` to catch layout or sign-in problems.
+ */
+async function rehearse() {
+  const browser = await openBrowser([]);
+  const tabs = await prepareTabs(browser);
+  const page = tabs.site;
+  await startPointer();
+  await screenshot(path.join(outDir, 'rehearsal-tabs.png'));
+  const step = async (name, run) => {
+    try {
+      await run();
+      console.log(`ok    ${name}`);
+    } catch (error) {
+      console.log(`FAIL  ${name}: ${String(error?.message ?? error).split('\n')[0]}`);
+    }
+  };
+  try {
+    await page.goto(`${site}/?debug=1`, { waitUntil: 'domcontentloaded' });
+    await step('site tour', () => showSite(page));
+    await step('estimate form', () => requestEstimate(page));
+    for (const [offerPath, job] of [['/book/inspection', false], ['/book/deposit', true]]) {
+      await step(`${offerPath} up to the card fields`, async () => {
+        await page.goto(`${site}${offerPath}`, { waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('#book-name');
+        await fillBooking(page, { job });
+        await sleep(4000);
+        if (!(await fillEmail(page))) throw new Error('no email field found');
+        await caption(page, 'Rehearsal: the card would be typed here', 'Nothing is paid in a rehearsal.');
+        await sleep(2500);
+      });
+    }
+    await step('office passcode screen', async () => {
+      await page.goto(`${site}/admin`, { waitUntil: 'domcontentloaded' });
+      await page.locator('input[type="password"]').first().waitFor({ timeout: 20000 });
+    });
+    await step('dashboard pages', () => dashboards(tabs));
+    await screenshot(path.join(outDir, 'rehearsal-end.png'));
+    await caption(tabs.active, 'Rehearsal finished', 'Nothing was recorded or paid.');
+  } finally {
+    stopPointer();
     await browser.close().catch(() => {});
   }
 }
@@ -443,4 +611,5 @@ async function setup() {
 
 if (mode === 'setup') await setup();
 else if (mode === 'record') await record();
-else console.log('Usage: node record.mjs setup | record');
+else if (mode === 'rehearse') await rehearse();
+else console.log('Usage: node record.mjs setup | rehearse | record');
