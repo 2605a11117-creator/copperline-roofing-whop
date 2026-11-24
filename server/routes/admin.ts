@@ -12,6 +12,7 @@ import {
   toHttpError,
   whopContext,
   whopRequest,
+  WhopApiError,
   type WhopContext,
   type WhopInvoice,
   type WhopMember,
@@ -248,6 +249,15 @@ async function createInvoice(whop: WhopContext, request: Request): Promise<Respo
       });
     }
   } catch (error) {
+    // Whop finalizes invoices only for verified businesses. The draft exists with the saved card on it,
+    // so show it and say what is missing instead of failing.
+    if (error instanceof WhopApiError && error.code === 'invoice_account_verification_required') {
+      toHttpError(error, mode === 'charge' ? 'issue invoice' : 'send invoice');
+      return json({
+        ...summarizeInvoice(invoice),
+        notice: `Whop created this invoice but keeps it as a draft until the business completes account verification. On a verified account the same request ${mode === 'charge' ? 'charges the saved card right away' : 'emails the invoice'}.`,
+      } satisfies InvoiceSummary);
+    }
     throw toHttpError(error, mode === 'charge' ? 'issue invoice' : 'send invoice');
   }
   return json(summarizeInvoice(invoice));

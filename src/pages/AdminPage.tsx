@@ -289,8 +289,13 @@ function BillingPanels({ callApi }: { callApi: AdminCall }) {
 
   useEffect(loadJobs, [loadJobs]);
 
+  // A refreshed invoice has no notice; keep the earlier one while the invoice is still a draft.
   const remember = (invoice: InvoiceSummary) =>
-    setInvoices((list) => [invoice, ...list.filter((item) => item.id !== invoice.id)]);
+    setInvoices((list) => {
+      const previous = list.find((item) => item.id === invoice.id);
+      const notice = invoice.notice ?? (invoice.status === 'draft' ? previous?.notice : undefined);
+      return [{ ...invoice, notice }, ...list.filter((item) => item.id !== invoice.id)];
+    });
 
   return (
     <>
@@ -606,6 +611,16 @@ function InvoiceCard({
             <dd>{invoice.email}</dd>
           </div>
         )}
+        {invoice.paymentMethodId && (
+          <div>
+            <dt>Card on file</dt>
+            <dd>{invoice.paymentMethodId}</dd>
+          </div>
+        )}
+        <div>
+          <dt>Whop invoice</dt>
+          <dd>{invoice.id}</dd>
+        </div>
         {invoice.paidAt && (
           <div>
             <dt>Paid</dt>
@@ -613,6 +628,12 @@ function InvoiceCard({
           </div>
         )}
       </dl>
+      {invoice.notice && invoice.status === 'draft' && (
+        <div className="notice" role="status">
+          <IconAlert />
+          <p>{invoice.notice}</p>
+        </div>
+      )}
       {invoice.checkoutLink && (
         <p className="invoice-card__link">
           <a href={invoice.checkoutLink} target="_blank" rel="noreferrer">

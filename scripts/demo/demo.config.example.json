@@ -14,31 +14,51 @@
   },
   "dashboardViews": [
     {
-      "title": "Whop dashboard: Leads",
-      "body": "The estimate request landed as a lead on the account.",
-      "url": "https://sandbox.whop.com/dashboard/biz_xxxxxxxx/leads/",
-      "seconds": 7
-    },
-    {
-      "title": "Whop dashboard: Payments",
-      "body": "The $149 inspection and the $500 deposit from this video.",
-      "url": "https://sandbox.whop.com/dashboard/biz_xxxxxxxx/payments/",
-      "seconds": 7,
+      "title": "Whop dashboard: Customers",
+      "body": "The estimate request added Jordan Rivera as a customer (with the lead and a note), and the checkouts added paying customers.",
+      "url": "https://sandbox.whop.com/dashboard/biz_SANDBOX_ACCOUNT/users/",
+      "seconds": 4,
       "search": "jordan"
     },
     {
+      "title": "Whop dashboard: Payments",
+      "body": "The $149 inspection and the $500 deposit from this video, paid in the Whop sandbox with the test card.",
+      "url": "https://sandbox.whop.com/dashboard/biz_SANDBOX_ACCOUNT/payments/",
+      "seconds": 4
+    },
+    {
       "title": "Whop dashboard: Invoices",
-      "body": "The final-balance invoice, charged to the card on file.",
-      "url": "https://sandbox.whop.com/dashboard/biz_xxxxxxxx/invoices/",
-      "seconds": 7
+      "body": "The $7,950 final-balance invoice the office page created through the Invoices API, with the saved card attached (a draft until the account is verified).",
+      "url": "https://sandbox.whop.com/dashboard/biz_SANDBOX_ACCOUNT/invoices/",
+      "seconds": 4
+    },
+    {
+      "title": "Whop dashboard: Checkout links (plans)",
+      "body": "Real one-time plans: $149 inspection, $395 flat-rate leak repair, $500 project deposit.",
+      "url": "https://sandbox.whop.com/dashboard/biz_SANDBOX_ACCOUNT/links/checkout/",
+      "seconds": 3.5
+    },
+    {
+      "title": "Whop dashboard: Websites",
+      "body": "The site is live on Whop Websites at its whop.site address.",
+      "url": "https://whop.com/dashboard/biz_PRODUCTION_ACCOUNT/websites/",
+      "seconds": 4
+    },
+    {
+      "title": "Whop analytics: custom pixel events",
+      "body": "whop.track events recorded by Whop for this website: service_viewed, estimate_requested and deposit_started, next to lead, view_content and initiate_checkout.",
+      "url": "https://whop.com/dashboard/biz_PRODUCTION_ACCOUNT/analytics/?tab=websites&period=today&interval=hourly",
+      "seconds": 6,
+      "events": true
     },
     {
       "title": "Source code",
       "body": "Original code. Company, services, prices and Whop IDs live in two config files.",
       "url": "https://github.com/your-name/your-repo",
-      "seconds": 8,
-      "scroll": 700
+      "seconds": 5,
+      "scroll": 600
     }
   ],
-  "closingLine": "Live URL, source code and the list of Whop features are attached to this submission."
+  "closingLine": "Live URL, source code and the list of Whop features are attached to this submission.",
+  "turnSpeed": 4
 }

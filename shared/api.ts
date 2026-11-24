@@ -183,4 +183,6 @@ export interface InvoiceSummary {
   scheduledChargeAt: string | null;
   paidAt: string | null;
   jobId: string | null;
+  /** Set when Whop created the invoice but could not finalize it (for example, account verification). */
+  notice?: string;
 }

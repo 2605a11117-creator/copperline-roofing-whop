@@ -191,11 +191,18 @@ async function setInspector(page, open) {
   }
 }
 
+// Spans (seconds from the start of the recording) where a person typed. They are sped up afterwards.
+const turns = [];
+let recordingStartedAt = null;
+const since = () => (recordingStartedAt === null ? null : (Date.now() - recordingStartedAt) / 1000);
+
 async function waitForPerson(page, predicate, title, body) {
   await caption(page, title, body);
   const started = Date.now();
+  const from = since();
   while (Date.now() - started < WAIT_FOR_PERSON_MS) {
     if (await predicate().catch(() => false)) {
+      if (from !== null) turns.push({ from: from + 2, to: since() - 1 });
       // The person moved the mouse: continue the pointer's glides from where they left it.
       await syncPointer();
       return;
@@ -230,7 +237,11 @@ async function prepareTabs(browser) {
   const views = config.dashboardViews ?? [];
   const dashboardTab = await context.newPage();
   const firstDashboard = views.find((view) => !/github\.com/.test(view.url));
-  if (firstDashboard) await dashboardTab.goto(firstDashboard.url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  if (firstDashboard) {
+    await dashboardTab.goto(firstDashboard.url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    // Filter the first list before the recording starts, so other account details never appear.
+    if (firstDashboard.search) await searchList(dashboardTab, firstDashboard.search, false);
+  }
   const codeTab = await context.newPage();
   const code = views.find((view) => /github\.com/.test(view.url));
   if (code) await codeTab.goto(code.url, { waitUntil: 'domcontentloaded' }).catch(() => {});
@@ -411,8 +422,16 @@ async function fillBillingPlace(page) {
 }
 
 async function checkout(page, offerPath, { job }) {
-  await page.goto(`${site}${offerPath}`, { waitUntil: 'domcontentloaded' });
+  // Follow the site's own link (in-app navigation, like a visitor), so the page is never reloaded
+  // while the pixel still has events to send. Fall back to the address if no link is on screen.
+  const link = page.locator(`footer a[href="${offerPath}"], main a[href="${offerPath}"]`).first();
+  if (await link.count().catch(() => 0)) {
+    await clickCentred(link);
+  } else {
+    await page.goto(`${site}${offerPath}`, { waitUntil: 'domcontentloaded' });
+  }
   await page.waitForSelector('#book-name');
+  await centre(page.locator('h1').first());
   await caption(
     page,
     job ? 'Project deposit, $500' : 'Inspection, $149',
@@ -478,12 +497,59 @@ async function office(page) {
   const charge = page.locator('.choice input[type="radio"]').first();
   if (await charge.count()) await checkCentred(charge);
   await sleep(1000);
-  await caption(page, 'Final balance with the Whop Invoices API', 'Creates an invoice for the remaining balance and charges the stored card automatically.');
+  await caption(
+    page,
+    'Final balance with the Whop Invoices API',
+    'POST /invoices for the remaining $7,950, with the card saved at deposit checkout as its payment method, then /issue to charge it.',
+  );
   await clickCentred(page.getByRole('button', { name: /create invoice/i }).first());
-  await sleep(9000);
-  await smoothScrollTo(page, '#invoices-title');
-  await caption(page, 'Invoice created and charged', 'The invoice is read back from the Invoices API with its status.');
-  await sleep(5500);
+  await page.locator('.invoice-card').first().waitFor({ timeout: 30000 }).catch(() => {});
+  await sleep(1500);
+  await centre(page.locator('.invoice-card').first());
+  const card = page.locator('.invoice-card').first();
+  if (await card.count()) await pointAt(page, card.locator('dl').first(), 700);
+  const draft = (await card.locator('.badge').first().textContent().catch(() => '')) === 'draft';
+  await caption(
+    page,
+    draft ? 'Invoice created through the Invoices API' : 'Invoice created and charged',
+    draft
+      ? 'Whop created the $7,950 invoice with the saved card attached. Whop issues invoices only for verified businesses, and this sandbox account is not verified, so it stays a draft; on a verified account the same call charges the card.'
+      : 'The invoice is read back from the Invoices API with its status.',
+  );
+  await sleep(8000);
+}
+
+/** Types into a dashboard list's search box (narrows the list to the demo customer). */
+async function searchList(page, text, withPointer) {
+  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+  const box = page.getByPlaceholder(/search by name/i).first();
+  await box.waitFor({ timeout: 10000 }).catch(() => {});
+  if (!(await box.count().catch(() => 0))) return false;
+  if ((await box.inputValue().catch(() => '')) === text) return true;
+  if (withPointer) await clickWithPointer(page, box).catch(() => {});
+  else await box.click().catch(() => {});
+  await box.fill('').catch(() => {});
+  await box.pressSequentially(text, { delay: 60 }).catch(() => {});
+  await sleep(2500);
+  return true;
+}
+
+/** Analytics > Websites: the Events card lists the custom whop.track events Whop recorded. */
+async function showEventsCard(page) {
+  // Fold Whop's onboarding checklist if it covers the cards.
+  const checklist = page.getByText(/bonus credits/i).first();
+  if (await checklist.isVisible().catch(() => false)) {
+    const fold = checklist.locator('xpath=ancestor::*[.//button][1]').locator('button').last();
+    await fold.click({ timeout: 3000 }).catch(() => {});
+    await sleep(600);
+  }
+  const tab = page.getByText('Events', { exact: true }).last();
+  if (!(await tab.count().catch(() => 0))) return;
+  await centre(tab);
+  await clickWithPointer(page, tab).catch(() => {});
+  await sleep(2000);
+  const row = page.getByText(/estimate_requested/).first();
+  if (await row.count().catch(() => 0)) await pointAt(page, row, 700);
 }
 
 /** The Whop dashboard pages in tab 2, then the source code in tab 3. */
@@ -491,24 +557,17 @@ async function dashboards(tabs) {
   for (const view of config.dashboardViews ?? []) {
     const page = /github\.com/.test(view.url) ? tabs.code : tabs.dashboard;
     await switchTab(tabs, page);
-    if (page.url().replace(/[?#].*$/, '') !== view.url.replace(/[?#].*$/, '')) {
+    if (page.url() !== view.url && page.url().replace(/[?#].*$/, '') !== view.url.replace(/[?#].*$/, '')) {
       await page.goto(view.url, { waitUntil: 'domcontentloaded' });
     }
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-    await sleep(1200);
-    if (view.search) {
-      // Narrow a list to the demo customer, so no other account details appear in the video.
-      const box = page.getByPlaceholder(/search by name/i).first();
-      if (await box.count().catch(() => 0)) {
-        await clickWithPointer(page, box).catch(() => {});
-        await box.fill('').catch(() => {});
-        await box.pressSequentially(view.search, { delay: 60 }).catch(() => {});
-        await sleep(2500);
-      }
-    }
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+    await sleep(1000);
+    // Narrow a list to the demo customer, so no other account details appear in the video.
+    if (view.search) await searchList(page, view.search, true);
+    if (view.events) await showEventsCard(page);
     // Point at the first row of the list or the page heading while the caption is read.
     const focus = page.locator('table tbody tr, [role="row"], main h1, article h1').first();
-    if (await focus.count().catch(() => 0)) await pointAt(page, focus, 700);
+    if (!view.events && (await focus.count().catch(() => 0))) await pointAt(page, focus, 700);
     await caption(page, view.title, view.body ?? '');
     await sleep(view.seconds ? view.seconds * 1000 : 6000);
     if (view.scroll) {
@@ -528,8 +587,11 @@ async function record() {
   await sleep(1500);
 
   const file = path.join(outDir, config.outputName ?? 'roofing-template-demo.mp4');
-  const recording = startRecording(file);
-  console.log(`Recording to ${file}`);
+  const raw = file.replace(/\.mp4$/, '-raw.mp4');
+  const recording = startRecording(raw);
+  recordingStartedAt = Date.now();
+  console.log(`Recording to ${raw}`);
+  let code = 1;
   try {
     await showSite(page);
     await requestEstimate(page);
@@ -540,11 +602,39 @@ async function record() {
     await caption(tabs.active, 'Thanks for watching', config.closingLine ?? '');
     await sleep(4000);
   } finally {
-    const code = await recording.stop();
-    console.log(code === 0 ? `Saved ${file}` : `ffmpeg exited with code ${code}`);
+    code = await recording.stop();
+    console.log(code === 0 ? `Saved ${raw}` : `ffmpeg exited with code ${code}`);
     stopPointer();
     await browser.close().catch(() => {});
   }
+  if (code === 0) {
+    const fast = await speedUpTurns(raw, file, turns, Number(config.turnSpeed ?? 3));
+    console.log(fast === 0 ? `Saved ${file} (typing turns sped up)` : `Could not speed up the turns; the full take is ${raw}`);
+  }
+}
+
+/**
+ * Plays the spans where a person typed (card details, passcode) faster, so the video stays short.
+ * Everything else keeps its real speed. Writes a new file; the raw take is kept.
+ */
+function speedUpTurns(input, output, spans, speed) {
+  const cuts = spans
+    .filter((span) => span.to - span.from > 3)
+    .sort((a, b) => a.from - b.from);
+  // One time map for the whole video: inside a span, time runs `speed` times faster; outside, at 1x.
+  // new_t = t - sum(clip(t - from, 0, length)) * (1 - 1/speed); fps then drops the surplus frames.
+  const saved = (1 - 1 / speed).toFixed(4);
+  const shift = cuts.map((span) => `clip(T-${span.from.toFixed(2)},0,${(span.to - span.from).toFixed(2)})`).join('+') || '0';
+  const filter = `setpts='(T-(${shift})*${saved})/TB',fps=${config.framerate ?? 24}`;
+  console.log(`Speeding up ${cuts.length} typing spans ${speed}x: ${cuts.map((c) => `${c.from.toFixed(0)}-${c.to.toFixed(0)}s`).join(', ')}`);
+  return new Promise((resolve) => {
+    const ffmpeg = spawn(
+      ffmpegPath,
+      ['-y', '-loglevel', 'error', '-i', input, '-vf', filter, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', String(config.crf ?? 26), '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output],
+      { stdio: ['ignore', 'ignore', 'inherit'] },
+    );
+    ffmpeg.on('exit', resolve);
+  });
 }
 
 /** One still frame of the whole screen (used by the rehearsal to check the tabs). */
@@ -612,4 +702,10 @@ async function setup() {
 if (mode === 'setup') await setup();
 else if (mode === 'record') await record();
 else if (mode === 'rehearse') await rehearse();
-else console.log('Usage: node record.mjs setup | rehearse | record');
+else if (mode === 'speed') {
+  // node record.mjs speed <raw.mp4> <out.mp4> <from-to,from-to,...>   (seconds) re-runs the speed-up on a take.
+  const [input, output, list = ''] = process.argv.slice(3);
+  const spans = list.split(',').filter(Boolean).map((pair) => { const [from, to] = pair.split('-').map(Number); return { from, to }; });
+  process.exitCode = await speedUpTurns(input, output, spans, Number(config.turnSpeed ?? 3));
+}
+else console.log('Usage: node record.mjs setup | rehearse | record | speed <raw> <out> <from-to,...>');
