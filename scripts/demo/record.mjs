@@ -198,21 +198,21 @@ async function showSite(page) {
     `Live on Whop Websites: ${new URL(site).host}`,
     'Deployed with the Whop CLI (whop apps deploy). The panel on the right lists every whop.track event as it fires.',
   );
-  await sleep(5500);
+  await sleep(4500);
 
   await smoothScrollTo(page, '#services');
   await caption(page, 'Services: repair, replacement, inspection', 'Each card fires whop.track("service_viewed") the first time it scrolls into view.');
-  await sleep(4500);
+  await sleep(4000);
   await page.mouse.wheel(0, 500);
-  await sleep(2500);
+  await sleep(2000);
 
   await smoothScrollTo(page, '#process');
   await caption(page, 'How a job runs', 'Inspection, then a $500 deposit saves the card on file, then the final invoice after the job.');
-  await sleep(3500);
+  await sleep(3000);
 
   await smoothScrollTo(page, '#financing');
   await caption(page, 'Financing callout', 'Checkout runs entirely on Whop, so Klarna, Afterpay and Splitit appear automatically for approved merchants.');
-  await sleep(4000);
+  await sleep(3500);
 
   await smoothScrollTo(page, '#area');
   await caption(page, 'Service area', 'ZIP code check against the configured service area.');
@@ -223,11 +223,11 @@ async function showSite(page) {
 
   await smoothScrollTo(page, '#reviews');
   await caption(page, 'Reviews and trust', 'Ratings, reviews, license and warranty details, all from the config file.');
-  await sleep(4000);
+  await sleep(3500);
 
   await smoothScrollTo(page, '#faq');
   await caption(page, 'Questions and contact details');
-  await sleep(2500);
+  await sleep(2000);
 }
 
 async function requestEstimate(page) {
@@ -248,7 +248,7 @@ async function requestEstimate(page) {
   await page.waitForSelector('#estimate [role="status"], #estimate .form-panel--done, #estimate .estimate-done', { timeout: 30000 }).catch(() => {});
   await sleep(1500);
   await caption(page, 'Estimate request sent: lead created on the Whop account', 'The response carries the lead ID from Whop. The panel shows whop.track("estimate_requested") and the standard lead event, deduplicated with the server copies by event_id.');
-  await sleep(6000);
+  await sleep(5000);
 }
 
 async function fillBooking(page, { job }) {
@@ -306,7 +306,7 @@ async function checkout(page, offerPath, { job }) {
     'Whop Payment Elements',
     'ExpressCheckoutElement (wallet buttons; the sandbox has no Apple Pay or Google Pay), EmailElement and PaymentElement, with the required BrandingElement. No custom card form.',
   );
-  await sleep(6000);
+  await sleep(4500);
   await fillEmail(page);
   await waitForPerson(
     page,
@@ -315,7 +315,7 @@ async function checkout(page, offerPath, { job }) {
     '4242 4242 4242 4242, any future date, any CVC, then press the Pay button.',
   );
   await page.waitForLoadState('domcontentloaded');
-  await sleep(5000);
+  await sleep(3500);
   await caption(
     page,
     job ? 'Deposit paid, card saved on file' : 'Test checkout complete',
@@ -323,7 +323,7 @@ async function checkout(page, offerPath, { job }) {
       ? 'The card was saved with a Setup Intent, then the $500 deposit was charged to that saved card.'
       : 'Paid in the Whop sandbox with Payment Elements. The payment ID comes back from the Whop Payments API.',
   );
-  await sleep(7000);
+  await sleep(6000);
 }
 
 async function office(page) {
@@ -335,10 +335,10 @@ async function office(page) {
     'Your turn: type the office passcode and press Enter.',
   );
   await caption(page, 'Office: Whop setup check', 'Environment, product and plan IDs for the $149 inspection, $395 flat-rate leak repair and $500 deposit.');
-  await sleep(5000);
+  await sleep(4500);
   await smoothScrollTo(page, '#leads-title');
-  await caption(page, 'Leads read back from the Whop API', 'The estimate request from a minute ago, with its Whop lead ID and person ID (GET /events?event=pixel.lead).');
-  await sleep(6000);
+  await caption(page, 'Leads read back from the Whop API', 'The estimate request from a minute ago, with its Whop lead ID, read back from the Whop API (members and their notes).');
+  await sleep(5000);
   await smoothScrollTo(page, '#jobs-title');
   await caption(page, 'Deposits with a card on file', 'Read from the Setup Intents API. Bill the final balance from here.');
   await sleep(4000);
@@ -363,13 +363,23 @@ async function office(page) {
   await sleep(9000);
   await smoothScrollTo(page, '#invoices-title');
   await caption(page, 'Invoice created and charged', 'The invoice is read back from the Invoices API with its status.');
-  await sleep(6000);
+  await sleep(5500);
 }
 
 async function dashboards(page) {
   for (const view of config.dashboardViews ?? []) {
     await page.goto(view.url, { waitUntil: 'domcontentloaded' });
-    await sleep(2500);
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await sleep(1500);
+    if (view.search) {
+      // Narrow a list to the demo customer, so no other account details appear in the video.
+      const box = page.getByPlaceholder(/search by name/i).first();
+      if (await box.count().catch(() => 0)) {
+        await box.click().catch(() => {});
+        await box.pressSequentially(view.search, { delay: 60 }).catch(() => {});
+        await sleep(2500);
+      }
+    }
     await caption(page, view.title, view.body ?? '');
     await sleep(view.seconds ? view.seconds * 1000 : 6000);
     if (view.scroll) {

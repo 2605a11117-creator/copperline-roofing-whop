@@ -23,7 +23,8 @@
       "title": "Whop dashboard: Payments",
       "body": "The $149 inspection and the $500 deposit from this video.",
       "url": "https://sandbox.whop.com/dashboard/biz_xxxxxxxx/payments/",
-      "seconds": 7
+      "seconds": 7,
+      "search": "jordan"
     },
     {
       "title": "Whop dashboard: Invoices",
