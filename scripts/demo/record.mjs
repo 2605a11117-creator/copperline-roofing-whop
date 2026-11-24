@@ -421,9 +421,11 @@ async function fillBillingPlace(page) {
   }
 }
 
-async function checkout(page, offerPath, { job }) {
-  // Follow the site's own link (in-app navigation, like a visitor), so the page is never reloaded
-  // while the pixel still has events to send. Fall back to the address if no link is on screen.
+/**
+ * Opens a booking page through the site's own link (in-app navigation, like a visitor), so the page is
+ * never reloaded while the pixel still has events to send. Falls back to the address if no link is found.
+ */
+async function openOffer(page, offerPath) {
   const link = page.locator(`footer a[href="${offerPath}"], main a[href="${offerPath}"]`).first();
   if (await link.count().catch(() => 0)) {
     await clickCentred(link);
@@ -432,6 +434,10 @@ async function checkout(page, offerPath, { job }) {
   }
   await page.waitForSelector('#book-name');
   await centre(page.locator('h1').first());
+}
+
+async function checkout(page, offerPath, { job }) {
+  await openOffer(page, offerPath);
   await caption(
     page,
     job ? 'Project deposit, $500' : 'Inspection, $149',
@@ -536,20 +542,25 @@ async function searchList(page, text, withPointer) {
 
 /** Analytics > Websites: the Events card lists the custom whop.track events Whop recorded. */
 async function showEventsCard(page) {
-  // Fold Whop's onboarding checklist if it covers the cards.
-  const checklist = page.getByText(/bonus credits/i).first();
-  if (await checklist.isVisible().catch(() => false)) {
-    const fold = checklist.locator('xpath=ancestor::*[.//button][1]').locator('button').last();
-    await fold.click({ timeout: 3000 }).catch(() => {});
+  // The card loads after the page; wait for its Events tab.
+  const tab = page.getByText('Events', { exact: true }).last();
+  await tab.waitFor({ timeout: 30000 }).catch(() => {});
+  if (!(await tab.count().catch(() => 0))) return;
+  await sleep(1000);
+  // Minimize Whop's onboarding checklist (only its own minimize button: its other buttons open other pages).
+  const minimize = page.getByRole('button', { name: 'Minimize checklist' }).first();
+  if (await minimize.isVisible().catch(() => false)) {
+    await minimize.click({ timeout: 3000 }).catch(() => {});
     await sleep(600);
   }
-  const tab = page.getByText('Events', { exact: true }).last();
-  if (!(await tab.count().catch(() => 0))) return;
   await centre(tab);
   await clickWithPointer(page, tab).catch(() => {});
   await sleep(2000);
   const row = page.getByText(/estimate_requested/).first();
-  if (await row.count().catch(() => 0)) await pointAt(page, row, 700);
+  if (await row.count().catch(() => 0)) {
+    await centre(row);
+    await pointAt(page, row, 700);
+  }
 }
 
 /** The Whop dashboard pages in tab 2, then the source code in tab 3. */
@@ -666,25 +677,29 @@ async function rehearse() {
     }
   };
   try {
-    await page.goto(`${site}/?debug=1`, { waitUntil: 'domcontentloaded' });
-    await step('site tour', () => showSite(page));
-    await step('estimate form', () => requestEstimate(page));
-    for (const [offerPath, job] of [['/book/inspection', false], ['/book/deposit', true]]) {
-      await step(`${offerPath} up to the card fields`, async () => {
-        await page.goto(`${site}${offerPath}`, { waitUntil: 'domcontentloaded' });
-        await page.waitForSelector('#book-name');
-        await fillBooking(page, { job });
-        await sleep(4000);
-        if (!(await fillEmail(page))) throw new Error('no email field found');
-        await caption(page, 'Rehearsal: the card would be typed here', 'Nothing is paid in a rehearsal.');
-        await sleep(2500);
+    // `node record.mjs rehearse dashboards` plays only the dashboard tour.
+    if (process.argv[3] !== 'dashboards') {
+      await page.goto(`${site}/?debug=1`, { waitUntil: 'domcontentloaded' });
+      await step('site tour', () => showSite(page));
+      await step('estimate form', () => requestEstimate(page));
+      for (const [offerPath, job] of [['/book/inspection', false], ['/book/deposit', true]]) {
+        await step(`${offerPath} up to the card fields`, async () => {
+          await openOffer(page, offerPath);
+          await fillBooking(page, { job });
+          await sleep(4000);
+          if (!(await fillEmail(page))) throw new Error('no email field found');
+          await caption(page, 'Rehearsal: the card would be typed here', 'Nothing is paid in a rehearsal.');
+          await sleep(2500);
+        });
+      }
+      await step('office passcode screen', async () => {
+        await page.goto(`${site}/admin`, { waitUntil: 'domcontentloaded' });
+        await page.locator('input[type="password"]').first().waitFor({ timeout: 20000 });
       });
     }
-    await step('office passcode screen', async () => {
-      await page.goto(`${site}/admin`, { waitUntil: 'domcontentloaded' });
-      await page.locator('input[type="password"]').first().waitFor({ timeout: 20000 });
-    });
     await step('dashboard pages', () => dashboards(tabs));
+    const dashboardTitle = await tabs.dashboard.title().catch(() => '');
+    if (/create campaign|ads/i.test(dashboardTitle)) console.log(`FAIL  dashboard tab ended on "${dashboardTitle}"`);
     await screenshot(path.join(outDir, 'rehearsal-end.png'));
     await caption(tabs.active, 'Rehearsal finished', 'Nothing was recorded or paid.');
   } finally {
